@@ -1,0 +1,5 @@
+# Excepciones de Trivy (Hito 0 - DAS)
+# Nota: Según el documento, solo se permiten excepciones aprobadas por el jefe de proyecto,
+# con CVE, motivo y fecha de revisión.
+vulnerabilities: []
+

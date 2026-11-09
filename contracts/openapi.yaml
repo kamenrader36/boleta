@@ -1,0 +1,229 @@
+openapi: 3.1.0
+info:
+  title: API Gestor de Tareas
+  description: Microservicio de ejemplo para la gestión de tareas, diseñado para enseñar el estándar OpenAPI y la integración con Go, Vue y PostgreSQL.
+  version: 1.0.0
+  contact:
+    name: Equipo Docente
+
+servers:
+  - url: http://localhost:8080
+    description: Entorno de Desarrollo Local
+  - url: https://api.midominio.cl
+    description: Entorno de Producción
+
+tags:
+  - name: Tareas
+    description: Operaciones CRUD completas para la entidad Tareas
+  - name: Salud
+    description: Verificaciones de salud y observabilidad mínima
+
+paths:
+  /healthz:
+    get:
+      tags:
+        - Salud
+      summary: Liveness check
+      description: Retorna 200 si el proceso del servicio se encuentra vivo y respondiendo.
+      responses:
+        '200':
+          description: Servicio vivo
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ok"
+
+  /readyz:
+    get:
+      tags:
+        - Salud
+      summary: Readiness check
+      description: Retorna 200 si la base de datos PostgreSQL está conectada y lista para operar.
+      responses:
+        '200':
+          description: Base de datos lista
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ready"
+        '503':
+          description: Base de datos no disponible
+
+  /api/v1/tareas:
+    get:
+      tags:
+        - Tareas
+      summary: Lista todas las tareas
+      description: Retorna un listado de tareas. Permite filtrar por estado mediante parámetros de query.
+      parameters:
+        - name: estado
+          in: query
+          description: Filtra las tareas por su estado actual
+          required: false
+          schema:
+            type: string
+            enum: [pendiente, en_progreso, completado]
+      responses:
+        '200':
+          description: Lista de tareas obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TareaResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Tareas
+      summary: Crea una nueva tarea
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TareaRequest'
+      responses:
+        '201':
+          description: Tarea creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TareaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/tareas/{id}:
+    get:
+      tags:
+        - Tareas
+      summary: Obtiene una tarea específica por su ID
+      parameters:
+        - $ref: '#/components/parameters/TareaId'
+      responses:
+        '200':
+          description: Tarea encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TareaResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Tareas
+      summary: Actualiza el estado o título de una tarea
+      parameters:
+        - $ref: '#/components/parameters/TareaId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TareaRequest'
+      responses:
+        '200':
+          description: Tarea actualizada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TareaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Tareas
+      summary: Elimina una tarea del sistema
+      parameters:
+        - $ref: '#/components/parameters/TareaId'
+      responses:
+        '204':
+          description: Tarea eliminada exitosamente (No devuelve contenido)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    TareaId:
+      name: id
+      in: path
+      required: true
+      description: ID único de la tarea
+      schema:
+        type: string
+        example: "1"
+
+  schemas:
+    # Lo que el usuario envía para crear o editar
+    TareaRequest:
+      type: object
+      required:
+        - titulo
+      properties:
+        titulo:
+          type: string
+          description: El título o descripción breve de la tarea
+          example: "Configurar contenedores Docker"
+        estado:
+          type: string
+          enum: [pendiente, en_progreso, completado]
+          default: pendiente
+          example: "en_progreso"
+
+    # Lo que el backend devuelve (Incluye lo enviado + campos autogenerados)
+    TareaResponse:
+      allOf:
+        - $ref: '#/components/schemas/TareaRequest'
+        - type: object
+          properties:
+            id:
+              type: string
+              description: Identificador único autogenerado en la base de datos
+              example: "1"
+            fecha_creacion:
+              type: string
+              format: date-time
+              example: "2026-10-30T14:30:00Z"
+
+    ErrorEstandar:
+      type: object
+      properties:
+        codigo:
+          type: integer
+          example: 400
+        mensaje:
+          type: string
+          example: "Datos de entrada inválidos."
+        detalles:
+          type: string
+          example: "El campo 'titulo' es obligatorio."
+
+  responses:
+    BadRequest:
+      description: Petición mal formada (ej. JSON inválido o falta un campo requerido)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEstandar'
+    NotFound:
+      description: El recurso con el ID indicado no existe en la base de datos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEstandar'
+    InternalServerError:
+      description: Error interno del servidor (ej. pérdida de conexión con PostgreSQL)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEstandar'
