@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"tarea-api/config"
-	"tarea-api/models"
+	"github.com/kamenrader36/boleta/config"
+	"github.com/kamenrader36/boleta/models"
 )
 
 func setCORS(w http.ResponseWriter) {

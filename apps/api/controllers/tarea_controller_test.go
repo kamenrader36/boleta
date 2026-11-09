@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"tarea-api/config"
-	"tarea-api/models"
+	"github.com/kamenrader36/boleta/config"
+	"github.com/kamenrader36/boleta/models"
 )
 
 func isDBAvailable() bool {

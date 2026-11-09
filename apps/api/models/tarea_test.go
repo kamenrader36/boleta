@@ -18,4 +18,3 @@ func TestTareaModel(t *testing.T) {
 		t.Errorf("atributos del modelo Tarea no coinciden")
 	}
 }
-

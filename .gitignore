@@ -1,4 +1,14 @@
 coverage.out
 .scannerwork/
-.env
+# Dependencias
+node_modules/
 
+# Variables de entorno y secretos
+.env
+.env.*
+
+# Build y archivos generados
+dist/
+coverage/
+*.out
+.DS_Store

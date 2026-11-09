@@ -1,22 +1,20 @@
-FROM golang:1.26-alpine AS build
 
-WORKDIR /app
-
-# Copiar archivos de dependencias desde apps/api
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine3.23@sha256:622e56dbc11a8cfe87cafa2331e9a201877271cbff918af53d3be315f3da88cc AS build
+WORKDIR /src
 COPY apps/api/go.mod apps/api/go.sum ./
-RUN go mod download
-
-# Copiar el código fuente y compilar
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY apps/api/ ./
-RUN CGO_ENABLED=0 go build -o /app/main .
+ARG TARGETOS TARGETARCH VERSION=dev
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -buildvcs=false -trimpath \
+    -ldflags="-s -w -X main.version=$VERSION" \
+    -o /out/boleta ./cmd/api
 
-# Runtime ligero
-FROM alpine:3.21
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae94b26e6a0f613bdf46feea7fc40f7bd72953e6
 WORKDIR /app
-RUN apk update && apk upgrade --no-cache && \
-    addgroup -S nonroot -g 10001 && adduser -S nonroot -G nonroot -u 10001
-COPY --from=build --chown=10001:10001 /app/main /app/main
-
-USER 10001:10001
+COPY --from=build --chown=nonroot:nonroot /out/boleta /app/boleta
+USER nonroot:nonroot
 EXPOSE 8080
-CMD ["/app/main"]
+ENTRYPOINT ["/app/boleta"]

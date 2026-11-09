@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"tarea-api/config"
-	"tarea-api/controllers"
+	"github.com/kamenrader36/boleta/config"
+	"github.com/kamenrader36/boleta/controllers"
 )
 
 func setupRouter() *http.ServeMux {
