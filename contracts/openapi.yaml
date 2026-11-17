@@ -1,229 +1,461 @@
 openapi: 3.1.0
 info:
-  title: API Gestor de Tareas
-  description: Microservicio de ejemplo para la gestión de tareas, diseñado para enseñar el estándar OpenAPI y la integración con Go, Vue y PostgreSQL.
+  title: API de Boleta y Anulación
+  description: >-
+    Contrato OpenAPI 3.1 del microservicio de Boleta y Anulación (Servicio 4 — DAS).
+    Gestiona la emisión de boletas con asignación correlativa de folio, consulta de
+    documentos emitidos y anulación con devolución coordinada de stock.
   version: 1.0.0
-  contact:
-    name: Equipo Docente
 
 servers:
+  - url: http://localhost:5141
+    description: Entorno de Desarrollo Local (Servicio 4)
   - url: http://localhost:8080
-    description: Entorno de Desarrollo Local
-  - url: https://api.midominio.cl
-    description: Entorno de Producción
+    description: Puerto interno del contenedor
 
 tags:
-  - name: Tareas
-    description: Operaciones CRUD completas para la entidad Tareas
+  - name: Boletas
+    description: Emisión de boletas, registro de folios y anulaciones con devolución de stock
   - name: Salud
-    description: Verificaciones de salud y observabilidad mínima
+    description: Endpoints de observabilidad (/healthz y /readyz)
 
 paths:
   /healthz:
     get:
+      operationId: obtenerSalud
       tags:
         - Salud
-      summary: Liveness check
-      description: Retorna 200 si el proceso del servicio se encuentra vivo y respondiendo.
+      summary: Liveness check del proceso
       responses:
-        '200':
-          description: Servicio vivo
+        "200":
+          description: El proceso de la API está vivo
           content:
             text/plain:
               schema:
                 type: string
-                example: "ok"
+                example: ok
 
   /readyz:
     get:
+      operationId: obtenerDisponibilidad
       tags:
         - Salud
-      summary: Readiness check
-      description: Retorna 200 si la base de datos PostgreSQL está conectada y lista para operar.
+      summary: Readiness check con conexión a PostgreSQL
       responses:
-        '200':
-          description: Base de datos lista
+        "200":
+          description: PostgreSQL responde correctamente
           content:
             text/plain:
               schema:
                 type: string
-                example: "ready"
-        '503':
-          description: Base de datos no disponible
+                example: ready
+        "503":
+          description: PostgreSQL no disponible
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemaRFC9457"
 
-  /api/v1/tareas:
+  /api/boletas:
     get:
+      operationId: listarBoletas
       tags:
-        - Tareas
-      summary: Lista todas las tareas
-      description: Retorna un listado de tareas. Permite filtrar por estado mediante parámetros de query.
+        - Boletas
+      summary: Lista las boletas registradas
+      description: Permite consultar boletas emitidas o anuladas, filtrando opcionalmente por estado o folio.
       parameters:
         - name: estado
           in: query
-          description: Filtra las tareas por su estado actual
           required: false
+          description: Filtra por el estado actual de la boleta
           schema:
             type: string
-            enum: [pendiente, en_progreso, completado]
+            enum: [EMITIDA, ANULADA]
+        - name: folio
+          in: query
+          required: false
+          description: Busca una boleta por su número de folio correlativo
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
       responses:
-        '200':
-          description: Lista de tareas obtenida exitosamente
+        "200":
+          description: Listado de boletas obtenido exitosamente
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TareaResponse'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                  $ref: "#/components/schemas/Boleta"
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
 
     post:
+      operationId: emitirBoleta
       tags:
-        - Tareas
-      summary: Crea una nueva tarea
+        - Boletas
+      summary: Emite una nueva boleta y asigna su folio correlativo
+      description: >-
+        Registra una nueva boleta asociada a una venta, asignándole un folio único
+        y calculando el desglose de montos en pesos enteros. Requiere Idempotency-Key.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/XRequestId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TareaRequest'
+              $ref: "#/components/schemas/EmitirBoletaRequest"
       responses:
-        '201':
-          description: Tarea creada exitosamente
+        "201":
+          description: Boleta emitida y folio registrado exitosamente
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TareaResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                $ref: "#/components/schemas/Boleta"
+        "400":
+          $ref: "#/components/responses/SolicitudInvalida"
+        "409":
+          $ref: "#/components/responses/ConflictoNegocio"
+        "422":
+          $ref: "#/components/responses/ErrorValidacion"
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
 
-  /api/v1/tareas/{id}:
+  /api/boletas/{id}:
     get:
+      operationId: obtenerBoletaPorId
       tags:
-        - Tareas
-      summary: Obtiene una tarea específica por su ID
+        - Boletas
+      summary: Obtiene el detalle de una boleta por su UUID
       parameters:
-        - $ref: '#/components/parameters/TareaId'
+        - $ref: "#/components/parameters/BoletaId"
       responses:
-        '200':
-          description: Tarea encontrada
+        "200":
+          description: Detalle de la boleta encontrada
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TareaResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/Boleta"
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
 
-    put:
+  /api/boletas/{id}/anulacion:
+    post:
+      operationId: anularBoleta
       tags:
-        - Tareas
-      summary: Actualiza el estado o título de una tarea
+        - Boletas
+      summary: Anula una boleta emitida y solicita la devolución de stock
+      description: >-
+        Cambia el estado de la boleta a ANULADA y ejecuta la devolución de stock
+        en el microservicio de Inventario/Stock. Solo se confirma si el servicio
+        de Stock confirma la operación. Requiere Idempotency-Key.
       parameters:
-        - $ref: '#/components/parameters/TareaId'
+        - $ref: "#/components/parameters/BoletaId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/XRequestId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TareaRequest'
+              $ref: "#/components/schemas/AnularBoletaRequest"
       responses:
-        '200':
-          description: Tarea actualizada exitosamente
+        "200":
+          description: Boleta anulada y stock devuelto exitosamente
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TareaResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-    delete:
-      tags:
-        - Tareas
-      summary: Elimina una tarea del sistema
-      parameters:
-        - $ref: '#/components/parameters/TareaId'
-      responses:
-        '204':
-          description: Tarea eliminada exitosamente (No devuelve contenido)
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/AnularBoletaResponse"
+        "400":
+          $ref: "#/components/responses/SolicitudInvalida"
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+        "409":
+          $ref: "#/components/responses/ConflictoNegocio"
+        "502":
+          $ref: "#/components/responses/ErrorServicioExterno"
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
 
 components:
   parameters:
-    TareaId:
+    BoletaId:
       name: id
       in: path
       required: true
-      description: ID único de la tarea
+      description: Identificador único UUID de la boleta
       schema:
         type: string
-        example: "1"
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Clave única de idempotencia (UUID) para evitar duplicar folios o devoluciones de stock en reintentos
+      schema:
+        type: string
+        format: uuid
+        minLength: 36
+        maxLength: 36
+        example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Identificador de correlación de la petición
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        example: "req-987654321"
 
   schemas:
-    # Lo que el usuario envía para crear o editar
-    TareaRequest:
+    ItemBoletaInput:
       type: object
       required:
-        - titulo
+        - producto_id
+        - nombre_producto
+        - cantidad
+        - precio_unitario
       properties:
-        titulo:
+        producto_id:
           type: string
-          description: El título o descripción breve de la tarea
-          example: "Configurar contenedores Docker"
+          format: uuid
+          description: UUID del producto en el servicio de Stock
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        nombre_producto:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Nombre descriptivo del ítem al momento de la emisión
+          example: "Teclado Mecánico RGB"
+        cantidad:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000
+          description: Cantidad de unidades vendidas
+          example: 2
+        precio_unitario:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Precio unitario en pesos chilenos (entero sin decimales)
+          example: 25000
+
+    ItemBoleta:
+      allOf:
+        - $ref: "#/components/schemas/ItemBoletaInput"
+        - type: object
+          required:
+            - subtotal
+          properties:
+            subtotal:
+              type: integer
+              format: int64
+              minimum: 1
+              description: Subtotal de la línea en pesos (cantidad * precio_unitario)
+              example: 50000
+
+    EmitirBoletaRequest:
+      type: object
+      required:
+        - venta_id
+        - items
+      properties:
+        venta_id:
+          type: string
+          format: uuid
+          description: Identificador UUID de la venta o transacción origen
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        rut_comprador:
+          type: string
+          pattern: "^[0-9]{7,8}-[0-9kK]{1}$"
+          description: RUT del comprador (opcional en boleta electrónica)
+          example: "12345678-5"
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: Detalle de productos incluidos en la boleta
+          items:
+            $ref: "#/components/schemas/ItemBoletaInput"
+
+    Boleta:
+      type: object
+      required:
+        - id
+        - folio
+        - venta_id
+        - estado
+        - monto_neto
+        - monto_iva
+        - monto_total
+        - fecha_emision
+        - items
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        folio:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Número de folio correlativo único asignado a la boleta
+          example: 1001
+        venta_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        rut_comprador:
+          type: string
+          example: "12345678-5"
         estado:
           type: string
-          enum: [pendiente, en_progreso, completado]
-          default: pendiente
-          example: "en_progreso"
-
-    # Lo que el backend devuelve (Incluye lo enviado + campos autogenerados)
-    TareaResponse:
-      allOf:
-        - $ref: '#/components/schemas/TareaRequest'
-        - type: object
-          properties:
-            id:
-              type: string
-              description: Identificador único autogenerado en la base de datos
-              example: "1"
-            fecha_creacion:
-              type: string
-              format: date-time
-              example: "2026-10-30T14:30:00Z"
-
-    ErrorEstandar:
-      type: object
-      properties:
-        codigo:
+          enum: [EMITIDA, ANULADA]
+          example: EMITIDA
+        monto_neto:
           type: integer
-          example: 400
-        mensaje:
+          format: int64
+          minimum: 0
+          description: Monto neto en pesos (bigint)
+          example: 42017
+        monto_iva:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Monto IVA (19%) en pesos (bigint)
+          example: 7983
+        monto_total:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Monto total bruto en pesos (bigint)
+          example: 50000
+        fecha_emision:
           type: string
-          example: "Datos de entrada inválidos."
-        detalles:
+          format: date-time
+          description: Fecha y hora de emisión en formato ISO-8601 (timestamptz)
+          example: "2026-11-17T15:04:05-03:00"
+        fecha_anulacion:
+          type: ["string", "null"]
+          format: date-time
+          description: Fecha y hora de anulación si el estado es ANULADA
+          example: null
+        motivo_anulacion:
+          type: ["string", "null"]
+          maxLength: 500
+          example: null
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemBoleta"
+
+    AnularBoletaRequest:
+      type: object
+      required:
+        - motivo
+      properties:
+        motivo:
           type: string
-          example: "El campo 'titulo' es obligatorio."
+          minLength: 5
+          maxLength: 500
+          description: Razón auditable por la cual se anula la boleta y se devuelve el stock
+          example: "Devolución total de productos por parte del cliente en tienda"
+
+    AnularBoletaResponse:
+      type: object
+      required:
+        - boleta
+        - stock_devuelto
+        - fecha_anulacion
+      properties:
+        boleta:
+          $ref: "#/components/schemas/Boleta"
+        stock_devuelto:
+          type: boolean
+          description: Confirma que el microservicio de Stock reintegró las unidades exitosamente
+          example: true
+        referencia_devolucion_stock:
+          type: string
+          format: uuid
+          description: ID de la operación de reversa confirmada por el servicio de Stock
+          example: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+        fecha_anulacion:
+          type: string
+          format: date-time
+          example: "2026-11-17T16:20:00-03:00"
+
+    ProblemaRFC9457:
+      type: object
+      description: Estructura de error estándar según RFC 9457 (application/problem+json)
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          example: "about:blank"
+        title:
+          type: string
+          example: "Conflict"
+        status:
+          type: integer
+          format: int32
+          example: 409
+        detail:
+          type: string
+          example: "La boleta con ID 550e8400-e29b-41d4-a716-446655440000 ya se encuentra ANULADA."
+        instance:
+          type: string
+          example: "/api/boletas/550e8400-e29b-41d4-a716-446655440000/anulacion"
 
   responses:
-    BadRequest:
-      description: Petición mal formada (ej. JSON inválido o falta un campo requerido)
+    SolicitudInvalida:
+      description: Solicitud mal formada o falta header obligatorio (ej. Idempotency-Key)
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorEstandar'
-    NotFound:
-      description: El recurso con el ID indicado no existe en la base de datos
+            $ref: "#/components/schemas/ProblemaRFC9457"
+    NoEncontrado:
+      description: La boleta solicitada no existe
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorEstandar'
-    InternalServerError:
-      description: Error interno del servidor (ej. pérdida de conexión con PostgreSQL)
+            $ref: "#/components/schemas/ProblemaRFC9457"
+    ConflictoNegocio:
+      description: Conflicto de estado (ej. boleta ya anulada o colisión de clave de idempotencia)
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/ErrorEstandar'
+            $ref: "#/components/schemas/ProblemaRFC9457"
+    ErrorValidacion:
+      description: Error de validación en los campos del contrato
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemaRFC9457"
+    ErrorServicioExterno:
+      description: El servicio de Stock no pudo confirmar la devolución de inventario (timeout o caída)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemaRFC9457"
+    ErrorInterno:
+      description: Error interno del servidor sin exposición de trazas
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemaRFC9457"
