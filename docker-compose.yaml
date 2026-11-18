@@ -2,7 +2,7 @@ name: boleta
 
 services:
   postgres:
-    image: postgres:17.11
+    image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
     container_name: boleta_db
     environment:
       - POSTGRES_USER=${DB_USER}
@@ -18,21 +18,36 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.migrate
+    container_name: boleta_migrate
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: boleta_backend
     ports:
-      - "127.0.0.1:5111:8080"
+      - "127.0.0.1:5141:8080"
     environment:
-      - API_PORT=${API_PORT}
-      - API_ENV=${API_ENV}
+      - API_PORT=${API_PORT:-8080}
+      - API_ENV=${API_ENV:-dev}
+      - TZ=${TZ:-America/Santiago}
       - DATABASE_URL=${DATABASE_URL}
-      - FRONTEND_URL=${FRONTEND_URL}
+      - AUTH_JWKS_URL=${AUTH_JWKS_URL}
+      - STOCK_URL=${STOCK_URL}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5140}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   frontend:
     build:
@@ -40,14 +55,14 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: boleta_frontend
     ports:
-      - "127.0.0.1:5110:8080"
+      - "127.0.0.1:5140:8080"
     environment:
-      - BACKEND_URL=${BACKEND_URL}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8080}
     depends_on:
       - backend
 
   mailpit:
-    image: axllent/mailpit:v1.31.3
+    image: axllent/mailpit:v1.31.3@sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d
     container_name: boleta_mailpit
     ports:
       - "127.0.0.1:8025:8025"

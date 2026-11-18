@@ -9,6 +9,16 @@ pre-commit:
       run: pnpm exec oxlint --deny-warnings
     go-fmt:
       glob: "*.go"
-      run: cd apps/api && go fmt ./... && go vet ./...
+      run: cd apps/api && test -z "$(gofmt -l .)" && go vet ./...
     secretos:
-      run: docker run --rm -v .://path zricethezav/gitleaks:v8.30.1 protect --source="//path" --staged --redact --no-banner
+      run: gitleaks protect --staged --redact --no-banner
+
+pre-push:
+  parallel: true
+  commands:
+    typecheck:
+      run: pnpm typecheck
+    test:
+      run: pnpm test
+    test-api:
+      run: pnpm test:api

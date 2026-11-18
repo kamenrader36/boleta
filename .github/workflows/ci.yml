@@ -9,7 +9,7 @@ permissions:
 
 env:
   TRIVY_VERSION: v0.76.1
-  GOVULNCHECK_VERSION: v1.1.4
+  GOVULNCHECK_VERSION: v1.9.0
   OASDIFF_VERSION: v1.35.0
   DOCKLE_VERSION: v0.4.15
 
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:17.11
+        image: postgres:17.11@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -34,12 +34,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version: 22 }
+        with: { node-version-file: .nvmrc }
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
       - run: cd apps/api && go mod verify
+      - name: Validar contrato OpenAPI
+        run: go run github.com/oasdiff/oasdiff@${OASDIFF_VERSION} validate contracts/openapi.yaml
       - name: Ejecutar pruebas y generar cobertura
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/boleta_db?sslmode=disable
@@ -76,7 +78,6 @@ jobs:
         run: docker run --rm -v ${{ github.workspace }}:/path zricethezav/gitleaks:v8.30.1 detect --source="/path" --verbose --redact
       - name: Govulncheck
         run: cd apps/api && go run golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} ./...
-        continue-on-error: true
       - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0 (hadolint v2.15.1)
         with: { recursive: true, failure-threshold: error }
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -89,28 +90,32 @@ jobs:
           exit-code: "1"
 
   imagen:
-    needs: [seguridad]
+    needs: [calidad, seguridad]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: docker build --pull -f apps/api/Dockerfile --build-arg VERSION=${GITHUB_SHA::7} -t api:ci .
+      - run: docker build --pull -f apps/api/Dockerfile.migrate -t migrate:ci .
       - run: docker build --pull -f apps/web/Dockerfile -t web:ci .
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          {
-            version: "${{ env.TRIVY_VERSION }}",
-            image-ref: api:ci,
-            severity: "HIGH,CRITICAL",
-            ignore-unfixed: true,
-            exit-code: "1",
-          }
+          version: "${{ env.TRIVY_VERSION }}"
+          image-ref: api:ci
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          exit-code: "1"
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          {
-            version: "${{ env.TRIVY_VERSION }}",
-            image-ref: web:ci,
-            severity: "HIGH,CRITICAL",
-            ignore-unfixed: true,
-            exit-code: "1",
-          }
+          version: "${{ env.TRIVY_VERSION }}"
+          image-ref: migrate:ci
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: "${{ env.TRIVY_VERSION }}"
+          image-ref: web:ci
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          exit-code: "1"
       - run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock goodwithtech/dockle:${{ env.DOCKLE_VERSION }} --exit-code 1 --exit-level warn api:ci
