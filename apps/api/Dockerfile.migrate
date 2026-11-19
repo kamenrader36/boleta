@@ -4,19 +4,24 @@ FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine3.23@sha256:23f198931d4bd83b
 
 WORKDIR /src
 
+COPY tools/goose/go.mod tools/goose/go.sum ./
+
 ARG TARGETOS TARGETARCH
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 \
-    GOOS=$TARGETOS \
-    GOARCH=$TARGETARCH \
-    GOBIN=/out \
-    go install \
-      -trimpath \
-      -ldflags="-s -w" \
-      -tags="no_clickhouse no_libsql no_mssql no_mysql no_sqlite3 no_vertica no_ydb" \
-      github.com/pressly/goose/v3/cmd/goose@v3.30.1
+    go mod download \
+    && go mod verify \
+    && CGO_ENABLED=0 \
+       GOOS=$TARGETOS \
+       GOARCH=$TARGETARCH \
+       go build \
+         -mod=readonly \
+         -trimpath \
+         -ldflags="-s -w" \
+         -tags="no_clickhouse no_libsql no_mssql no_mysql no_sqlite3 no_vertica no_ydb" \
+         -o /out/goose \
+         github.com/pressly/goose/v3/cmd/goose
 
 FROM alpine:3.23.7@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
 

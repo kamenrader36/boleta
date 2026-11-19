@@ -5,4 +5,4 @@ apps/web/node_modules
 apps/web/dist
 coverage.out
 dist
-
+.gitleaks
