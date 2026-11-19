@@ -50,20 +50,17 @@ jobs:
           go test -v -coverprofile=../../coverage.out ./...
           cd ../..
           sed -i 's|github.com/kamenrader36/boleta/|apps/api/|g' coverage.out
-      - name: Sanitizar variables SonarQube
-        run: |
-          CLEAN_URL=$(echo "${{ secrets.SONAR_HOST_URL }}" | tr -d '[:space:]')
-          CLEAN_TOKEN=$(echo "${{ secrets.SONAR_TOKEN }}" | tr -d '[:space:]')
-          echo "SONAR_HOST_URL=$CLEAN_URL" >> "$GITHUB_ENV"
-          echo "SONAR_TOKEN=$CLEAN_TOKEN" >> "$GITHUB_ENV"
-      - uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+      - name: Analizar boleta en SonarQube Cloud
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
-      - uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1.2.1
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Verificar Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1.2.1
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   seguridad:
     runs-on: ubuntu-24.04
