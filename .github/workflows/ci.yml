@@ -64,19 +64,36 @@ jobs:
 
   seguridad:
     runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
+
       - name: Gitleaks detect
-        run: docker run --rm -v ${{ github.workspace }}:/path zricethezav/gitleaks:v8.30.1 detect --source="/path" --verbose --redact
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/path" \
+            zricethezav/gitleaks:v8.30.1 \
+            detect \
+            --source="/path" \
+            --config="/path/.gitleaks.toml" \
+            --verbose \
+            --redact
+
       - name: Govulncheck
         run: cd apps/api && go run golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} ./...
+
       - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0 (hadolint v2.15.1)
-        with: { recursive: true, failure-threshold: error }
+        with:
+          recursive: true
+          failure-threshold: error
+
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}

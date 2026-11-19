@@ -1,0 +1,14 @@
+title = "Configuracion de Gitleaks para boleta"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Identificador publico de SonarQube Cloud, no es un token"
+condition = "AND"
+paths = ['''(^|/)sonar-project\.properties$''']
+regexTarget = "line"
+regexes = ['''^\s*sonar\.projectKey\s*=\s*kamenrader36_boleta\s*$''']
